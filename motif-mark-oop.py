@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
 import argparse
+from collections import defaultdict
 from distutils.command.install_lib import PYTHON_SOURCE_EXTENSION
+from operator import index
 import re
+import itertools
 from urllib.request import parse_http_list
 
 def get_args():
@@ -16,77 +19,58 @@ args = get_args()
 
 #Initalize class for Motifs:
 
-class motif:
+class Uniq_Motif:
 	"""
-	Motif class that takes in motif pattern and stores all possible combinations as a list
+	Motif class that takes in a motif and can search for that motifs in a supplied gene, outputing coordinates
 	"""
-	def __init__(self, motif_str):
-		self.motif = motif_str.lower()
-		self.purines = ["a","u","g"] #Purines 
-		self.pyrimidines = ["c","t"] #pyrimadines 
-		self.motif_list_of_lists = [] # list of lists that will be used to generate all possible motif combinations
-		self.motif_combinations_pre = [] 
-		self.motif_combinations = [] # list that will contain all possible nucleotide sequences given motif
-		
-		#Read each nucleotide in the motif and append the appropriate list of possible nucleotides
-		for nucleotide in self.motif:
+	def __init__(self, motif):
+		self.motif = motif  #store the unaltered motifs
+		self.motif_lower = motif.lower()   #generates list of lowercase motifs
+		#Read each nucleotide in the motif and append the appropriate regex search rule to create unique regex
+		regex = '(?=('
+		for nucleotide in self.motif_lower:
 			if nucleotide == "r":
-				self.motif_list_of_lists.append(self.purines)
+				regex += "(a|g)"   						#considers purine a,,g
 			elif nucleotide =="y":
-				self.motif_list_of_lists.append(self.pyrimidines)
-			else:
-				self.motif_list_of_lists.append(nucleotide)
-
-		#iterate over list of lists, creating a master list of all possible nucleotide sequences, given the motif
-		self.motif_combinations_pre = list(itertools.product(*self.motif_list_of_lists))
-
-		#Join together the dictionaries, creating the strings of nucelotides
-		for i in self.motif_combinations_pre:
-			string = ""
-			self.motif_combinations.append(string.join(i))
-
+				regex += "(c|t|u)"			 				#considers pyrimadine c,t,u
+			elif nucleotide == "u":
+				regex += "(t|u)"
+			elif nucleotide == "t":
+				regex += "(t|u)"
+			else:										#else add whatever the nucelotide is to the running regex
+				regex += nucleotide
+		regex += '))'					
+		self.regex = regex								#Assign unique regex expression
+		print(regex)
+	
 	def gene_search(self,Gene):
 		"""
-		Takes in a gene object and searches for motifs in the gene, returning three dictionaries, 
-		each containing the unique motifs as keys and the matching locations as values.
+		Takes in a gene object and searches for the motif in the gene, returning a dictionary  
+		 containing the locations of the matching locations as values.
 		""" 
-		#initialize dicts which will house motifs as keys and location hits as values
-		pre_exon_dict = {} 
-		exon_dict = {}
-		post_exon_dict = {}
+		#initialize dict which will house motif as keys and location hits as values 
+		match_dict = {}
+
+		#Create iterobjects for the motif and locate all the motif hits within the given sequence 				
+		match_dict[self.motif] = re.finditer(self.regex,Gene.gene_seq_lower)
+
+		#Use only the the index locations of the matches
+		index_dict = {}	
+		for motif,iterobj in match_dict.items():
+			lst = [obj.span() for obj in list(iterobj)]
+			index_dict[motif] = lst
 		
-		pre_exon = Gene.pre_exon
-		exon = Gene.exon
-		post_exon = Gene.post_exon
-
-		#Create iterobjects for each motif combination which locates all the motif hits for the given sequence
-		for seq in self.motif_combinations:
-			pre_exon_hits = re.finditer(seq,pre_exon) 
-			exon_hits = re.finditer(seq,exon)
-			post_exon_hits = re.finditer(seq,post_exon)
-
-			#Next add motif with its hits to dict, or "n/a" if none found
-			if len(pre_exon_hits) != 0:
-				pre_exon_dict[seq] = pre_exon_hits
-			else:
-				pre_exon_dict[seq] = "n/a"
-			if len(exon_hits) != 0:
-				exon_dict[seq] = exon_hits
-			else:
-				exon_dict[seq] = "n/a"
-			if len(post_exon_hits) != 0:
-				post_exon_dict[seq] = post_exon_hits
-			else:
-				post_exon_dict[seq] = "n/a"
-		return pre_exon_dict, exon_dict, post_exon_dict
-
+		return index_dict
+	
 
 class Gene:
 	"""
 	Gene class that takes in a gene pattern and stores all exons, pre-exons and post-exons.
 	"""
-	def __init__(self,gene_seq):
+	def __init__(self,gene_seq, header):
 		self.gene_seq = gene_seq
+		self.gene_seq_lower = gene_seq.lower()   #hold lowercase string for motif searching
+		self.header = header						#header for FASTA seq 
 		self.pre_exon = ""  
 		self.exon = ""
 		self.post_exon = ""	
@@ -98,36 +82,65 @@ class Gene:
 
 
 
-#read in motif file, creating a dict to hold motif objects
-motif_dict = {} #dict to hold input motifs and their class objects
+#read in motif file, creating a list to hold motifs
+motif_list = [] 
 with open(args.motifs_file, "r") as motif_file:
 	for line in motif_file:
 		Motif = line.strip('\n')
-		motif_dict[Motif] = motif(str(Motif))
+		motif_list.append(str(Motif))
 
-####working on this#########
+
+
+
 #Read in fasta file, creating a dict to hold gene objects
 with open(args.fasta_file, "r") as fasta_file:
 	gene_dict = {} #empty dict that will contain fasta headers and corresponding genes
-	working_seq =""
-
 	for line in fasta_file:
 		if line[0] == '>':
-			new_key = line[]
-			gene_dict[old_key] = working_seq 
-			old_key = line[1:]      
-			working_seq = ""
-
+			gene_name = re.search('[A-Z].+',line)[0]    #grabs the gene name from Fasta header"
+			gene_dict[gene_name] = ""			
 		else:
-			working_seq += line.strip('\n')
+			gene_dict[gene_name] += line.strip('\n')			#builds string of entire gene sequence
 
-for key,value in gene_dict.items():
-	print(key)
-	print('\n')
-	print(value)
-	print('\n')
 
-		
+# #######Test for creating motif list from file WORKS
+# print("making sure motif file is being read correctly")
+# print('\n')
+# print("these are the detected motifs")
+# print(motif_list)
+# print('\n')
+
+
+
+# ######Test for gene_dict         WORKS
+# print("Testing Gene+seq Dictionary from Fasta File")
+# for gene,sequence in gene_dict.items():
+# 	print(gene)
+# 	print('\n')
+# 	print(sequence)
+# 	print('\n')
+
+
+#Create dict of Gene object for each gene in dictionary.   Keys = header name and values = gene objects 
+Genes = {name:Gene(gene_seq=(gene_dict[name]), header=name) for name in gene_dict.keys()}
+
+	
+#test  for Gene objects   WORKS
+#print(Genes)
+
+###########################################################CURRENT TEST
+
+#Create dict of motif objects for given list from file
+Motifs = {mot:Uniq_Motif(motif=str(mot)) for mot in motif_list}
+
+#Create dict of motifs and their locations for each gene with structure of {Gene1 :  {motif1:[loc1, loc2, loc3], motif2:[loc1,loc2]}}
+gene_motif_dict = defaultdict(dict)
+for gene,obj in Genes.items():
+	for motifobj in Motifs.values(): 
+		gene_motif_dict[gene].update(motifobj.gene_search(obj))     #updates current gene key with next motif dict
+
+print(gene_motif_dict)
+print('\n')
 
 class Drawing:
 	"""
@@ -140,15 +153,3 @@ class Drawing:
 
 
 
-	
-
-
-#Still need to parse Fafsa file
-#Still need to create drawing class that inputs something and creates drawings for pycairo.
-	
-
-
-
-
-
-#Questions:: account for reverse complement in title?
