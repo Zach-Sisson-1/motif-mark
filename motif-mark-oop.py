@@ -2,15 +2,9 @@
 
 import argparse
 from collections import defaultdict
-from distutils.command.install_lib import PYTHON_SOURCE_EXTENSION
-from doctest import master
-from operator import index
 import re
 import itertools
-from urllib.request import parse_http_list
 import cairo
-import math
-import random
 import numpy as np
 
 def get_args():
@@ -46,7 +40,6 @@ class Uniq_Motif:
 				regex += nucleotide
 		regex += '))'					
 		self.regex = regex								#Assign unique regex expression
-		#print("this is the regex",regex)
 	
 	def gene_search(self,Gene):
 		"""
@@ -74,7 +67,6 @@ class Uniq_Motif:
 				hit = tuple(hit)
 				index_dict2[motif].append(hit)
 		
-		#print(index_dict2)
 		return index_dict2
 	
 
@@ -98,13 +90,6 @@ class Gene:
 		self.pre_exon_length = len(self.pre_exon)
 		self.exon_length = len(self.exon[0])
 		self.post_exon_length = len(self.post_exon)
-		# print("logging pre-exon length of", self.pre_exon_length)
-		#print("logging post-exon length of", self.post_exon_length)
-		# print("logging exon length of", self.exon_length)
-
-
-
-
 
 
 #read in motif file, creating a list to hold motifs
@@ -128,32 +113,10 @@ with open(args.fasta_file, "r") as fasta_file:
 			gene_dict[gene_name] += line.strip('\n')			#builds string of entire gene sequence
 
 
-
-# #######Test for creating motif list from file WORKS
-# print("making sure motif file is being read correctly")
-# print('\n')
-# print("these are the detected motifs")
-# print(motif_list)
-# print('\n')
-
-
-
-# ######Test for gene_dict         WORKS
-# print("Testing Gene+seq Dictionary from Fasta File")
-# for gene,sequence in gene_dict.items():
-# 	print(gene)
-# 	print('\n')
-# 	print(sequence)
-# 	print('\n')
-
-
 #Create dict of Gene object for each gene in dictionary.   Keys = header name and values = gene objects 
 Genes = {name:Gene(gene_seq=(gene_dict[name]), header=name) for name in gene_dict.keys()}
 
 	
-#test  for Gene objects   WORKS
-#print(Genes)
-
 ###########################################################CURRENT TEST
 
 #Create dict of motif objects for given list from file
@@ -164,19 +127,6 @@ gene_motif_dict = defaultdict(dict)
 for gene,obj in Genes.items():
 	for motifobj in Motifs.values(): 
 		gene_motif_dict[gene].update(motifobj.gene_search(obj))     #updates current gene key with next motif dict
-
-
-
-#Print full dict for test########
-#print(gene_motif_dict)
-#print('\n')
-
-
-#print(gene_dict)
-#print('\n')
-#print(Genes)
-
-
 
 
 #Join dictionaries so key = Gene name, value = [Gene object, motif dict]
@@ -190,8 +140,6 @@ class Drawing:
 	Drawing class which will take in a dictionary of Genes, their objects, and their motif locations and output a 
 	pycairo drawing with introns,exons,and motifs labeled. 
 	"""
-	
-
 	def __init__(self,master_dict) -> None:
 		#establish the context/size of layout based on number of genes and length of longest gene
 		self.master_dict = master_dict				#	store the dict
@@ -209,7 +157,6 @@ class Drawing:
 		self.motiflen = (self.spacepergene*0.3)							# height of motif rectangle
 		self.gapy = 20													# down shift 
 		self.gapx = (self.X*0.02) 										# right shift
-		print(self.gapx)
 
 		#Establish color dict for each motif used for drawing
 		np.random.seed(63)
@@ -217,7 +164,6 @@ class Drawing:
 		for gene,dict in self.master_dict.values():
 			for motif in dict.keys():
 				self.color_dict[motif] = tuple(np.random.random(size=3))
-		#print(self.color_dict)
 
 
 	
@@ -320,9 +266,6 @@ class Drawing:
 			ctx.move_to((WIDTH-120),legend_slider)
 			ctx.set_font_size(20)
 			ctx.show_text(motif)
-
-
-
 	
 		#Save image
 		return surface
@@ -333,6 +276,10 @@ drawing = Drawing(master_dict=master_dict)
 
 #call the objects method
 surface = drawing.draw()
-surface.write_to_png("plzgod.png") 
 
-print("done")
+#Specify output file name
+filename_output = "{}.png".format(re.match("^([^.]+)",args.fasta_file).group(0))
+
+#save image object
+surface.write_to_png(filename_output)
+
