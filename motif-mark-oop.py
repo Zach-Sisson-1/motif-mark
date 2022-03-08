@@ -3,10 +3,13 @@
 import argparse
 from collections import defaultdict
 from distutils.command.install_lib import PYTHON_SOURCE_EXTENSION
+from doctest import master
 from operator import index
 import re
 import itertools
 from urllib.request import parse_http_list
+import cairo
+import math
 
 def get_args():
 	parser = argparse.ArgumentParser(description="XXXX")
@@ -41,7 +44,7 @@ class Uniq_Motif:
 				regex += nucleotide
 		regex += '))'					
 		self.regex = regex								#Assign unique regex expression
-		print(regex)
+		#print("this is the regex",regex)
 	
 	def gene_search(self,Gene):
 		"""
@@ -71,14 +74,20 @@ class Gene:
 		self.gene_seq = gene_seq
 		self.gene_seq_lower = gene_seq.lower()   #hold lowercase string for motif searching
 		self.header = header						#header for FASTA seq 
-		self.pre_exon = ""  
-		self.exon = ""
-		self.post_exon = ""	
+		self.length = len(self.gene_seq_lower)   
 
 	#Parse gene_seq into pre-exon, exon, and postexon
 		self.pre_exon = re.findall('[a-z]+',self.gene_seq)[0]
 		self.post_exon = re.findall('[a-z]+',self.gene_seq)[1]
 		self.exon = re.findall('[A-Z]+',self.gene_seq)
+
+	#calculate lengths which will be used for drawing
+		self.pre_exon_length = len(self.pre_exon)
+		self.exon_length = len(self.exon)
+		self.post_exon_length = len(self.post_exon)
+
+
+
 
 
 
@@ -101,6 +110,7 @@ with open(args.fasta_file, "r") as fasta_file:
 			gene_dict[gene_name] = ""			
 		else:
 			gene_dict[gene_name] += line.strip('\n')			#builds string of entire gene sequence
+
 
 
 # #######Test for creating motif list from file WORKS
@@ -139,17 +149,105 @@ for gene,obj in Genes.items():
 	for motifobj in Motifs.values(): 
 		gene_motif_dict[gene].update(motifobj.gene_search(obj))     #updates current gene key with next motif dict
 
+
+
+#Print full dict for test########
 print(gene_motif_dict)
 print('\n')
 
+
+print(gene_dict)
+print('\n')
+print(Genes)
+
+
+
+
+#Join dictionaries so key = Gene name, value = [Gene object, motif dict]
+master_dict = {}
+for gene,object in Genes.items():
+	master_dict[gene] = [object,gene_motif_dict[gene]]
+
+
 class Drawing:
 	"""
-	Drawing class which will take in X and output a 
-	pycairo drawing with introns,exons, and motifs labeled. 
+	Drawing class which will take in a dictionary of Genes, their objects, and their motif locations and output a 
+	pycairo drawing with introns,exons,and motifs labeled. 
 	"""
-	#takes in gene
-	#takes in motif
-	#draws 
+	
+
+	def __init__(self,master_dict) -> None:
+		#establish the context/size of layout based on number of genes and length of longest gene
+		counter = 0									#initialize counter to track longest gene
+		for gene,lst in master_dict.items():
+			if lst[0].length > counter:
+				counter = lst[0].length
+
+		self.X = int(counter+1)							#longest gene
+		self.Y = int(len(master_dict.keys())+100)			#how many genes
+	
+	
+	def draw(self):	
+		#set width and height for image size
+		WIDTH, HEIGHT = self.X,self.Y
+
+		#Creates image surface with above dimensions and RGB24 format where each pixel is 32-bit quantity (see https://pycairo.readthedocs.io/en/latest/reference/enums.html#cairo.Format for more info)
+		surface = cairo.ImageSurface(cairo.FORMAT_RGB24, WIDTH, HEIGHT)
+
+		#Set drawing context to be the image surface above
+		ctx = cairo.Context(surface)
+		
+		#Draw components for each gene
+		slider = 15
+		for gene,lst in master_dict.items():
+																#Draw Gene name
+			ctx.move_to(10,slider)								
+			ctx.select_font_face("Courier", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+			ctx.set_font_size(5)
+			ctx.set_source_rgb(247,247,247) #white color
+			ctx.show_text(gene)
+			slider += 5	 #move down for start of gene line
+			
+																#Draw pre-exon and post-exon Gene line
+			#pre-exon
+			ctx.set_source_rgb(64,99,156) #navy blue color
+			ctx.set_line_width(1) #set line thickness
+			ctx.move_to(15,slider)
+			ctx.line_to(lst[0].pre_exon_length,slider) 
+			ctx.stroke()
+			ctx.fill()
+			#post-exon						
+			ctx.move_to((lst[0].pre_exon_length+lst[0].exon_length),slider)
+			ctx.line_to((lst[0].pre_exon_length+lst[0].exon_length+lst[0].exon_length),slider) 
+			ctx.stroke()
+			ctx.fill()
+
+																#Draw exon  
+
+			#set rectangle coords for exon	
+			hgt = 5
+			wth = lst[0].exon_length
+			x0 = lst[0].pre_exon_length
+			y0 = slider-(hgt/2)
+			#draw rectangle
+			ctx.set_source_rgb(110,116,128) #gray color
+			ctx.rectangle(x0,y0, wth, hgt)  # Rectangle(x0, y0, width, height)
+			ctx.fill()
+		
+			#Move slider up
+			slider += 10
+		
+		#Check here - are all genes labeled and drawn? drawn?
+		
+		#Save image
+		return surface
 
 
+#Create the object
+drawing = Drawing(master_dict=master_dict)
 
+#call the objects method
+surface = drawing.draw()
+surface.write_to_png("plzgod.png") 
+
+print("done")
