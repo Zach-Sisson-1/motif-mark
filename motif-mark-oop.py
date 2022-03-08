@@ -10,6 +10,8 @@ import itertools
 from urllib.request import parse_http_list
 import cairo
 import math
+import random
+import numpy as np
 
 def get_args():
 	parser = argparse.ArgumentParser(description="XXXX")
@@ -62,8 +64,18 @@ class Uniq_Motif:
 		for motif,iterobj in match_dict.items():
 			lst = [obj.span() for obj in list(iterobj)]
 			index_dict[motif] = lst
+		#update the span to reflect motif length
+		index_dict2 ={}
+		for motif,spanlist in index_dict.items():
+			index_dict2[motif] = []
+			for hit in spanlist:
+				hit = list(hit)
+				hit[1] = int(hit[0] + len(motif))
+				hit = tuple(hit)
+				index_dict2[motif].append(hit)
 		
-		return index_dict
+		#print(index_dict2)
+		return index_dict2
 	
 
 class Gene:
@@ -80,11 +92,15 @@ class Gene:
 		self.pre_exon = re.findall('[a-z]+',self.gene_seq)[0]
 		self.post_exon = re.findall('[a-z]+',self.gene_seq)[1]
 		self.exon = re.findall('[A-Z]+',self.gene_seq)
+		
 
 	#calculate lengths which will be used for drawing
 		self.pre_exon_length = len(self.pre_exon)
-		self.exon_length = len(self.exon)
+		self.exon_length = len(self.exon[0])
 		self.post_exon_length = len(self.post_exon)
+		# print("logging pre-exon length of", self.pre_exon_length)
+		#print("logging post-exon length of", self.post_exon_length)
+		# print("logging exon length of", self.exon_length)
 
 
 
@@ -152,13 +168,13 @@ for gene,obj in Genes.items():
 
 
 #Print full dict for test########
-print(gene_motif_dict)
-print('\n')
+#print(gene_motif_dict)
+#print('\n')
 
 
-print(gene_dict)
-print('\n')
-print(Genes)
+#print(gene_dict)
+#print('\n')
+#print(Genes)
 
 
 
@@ -178,14 +194,32 @@ class Drawing:
 
 	def __init__(self,master_dict) -> None:
 		#establish the context/size of layout based on number of genes and length of longest gene
-		counter = 0									#initialize counter to track longest gene
+		self.master_dict = master_dict				#	store the dict
+		counter = 0									#	initialize counter to track longest gene
 		for gene,lst in master_dict.items():
 			if lst[0].length > counter:
 				counter = lst[0].length
+		self.X = int(counter+(0.2*counter))								# longest gene + 30%
+		self.Y = int(len(master_dict.keys())*150)						# scale height according to # of genes. 
+		
+		self.spacepergene = (self.Y-20)/(len(master_dict.keys()))        # allot space per gene 
+		self.namespace = (self.spacepergene*0.4)						# space between gene name and sequence
+		self.betweenspace = (self.spacepergene*0.7)						# space between genes									
+		self.exonspace = (self.spacepergene*0.5) 						# height of exon rectangle
+		self.motiflen = (self.spacepergene*0.3)							# height of motif rectangle
+		self.gapy = 20													# down shift 
+		self.gapx = (self.X*0.02) 										# right shift
+		print(self.gapx)
 
-		self.X = int(counter+1)							#longest gene
-		self.Y = int(len(master_dict.keys())+100)			#how many genes
-	
+		#Establish color dict for each motif used for drawing
+		np.random.seed(63)
+		self.color_dict = {}
+		for gene,dict in self.master_dict.values():
+			for motif in dict.keys():
+				self.color_dict[motif] = tuple(np.random.random(size=3))
+		#print(self.color_dict)
+
+
 	
 	def draw(self):	
 		#set width and height for image size
@@ -198,47 +232,98 @@ class Drawing:
 		ctx = cairo.Context(surface)
 		
 		#Draw components for each gene
-		slider = 15
+		yslider = self.gapy							#initialize first y-coordinate
 		for gene,lst in master_dict.items():
 																#Draw Gene name
-			ctx.move_to(10,slider)								
+			ctx.move_to(self.gapx,yslider)								
 			ctx.select_font_face("Courier", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-			ctx.set_font_size(5)
-			ctx.set_source_rgb(247,247,247) #white color
+			ctx.set_font_size(15)
+			ctx.set_source_rgb(1,1,1) #white color
 			ctx.show_text(gene)
-			slider += 5	 #move down for start of gene line
+			yslider += self.namespace	 #move down for start of gene line
 			
 																#Draw pre-exon and post-exon Gene line
-			#pre-exon
-			ctx.set_source_rgb(64,99,156) #navy blue color
-			ctx.set_line_width(1) #set line thickness
-			ctx.move_to(15,slider)
-			ctx.line_to(lst[0].pre_exon_length,slider) 
+			#draw pre-exon
+			ctx.set_source_rgb((135/255),(131/255),(131/255)) #Gray color
+			ctx.set_line_width(5) #set line thickness
+			ctx.move_to(self.gapx,yslider)
+			ctx.line_to(lst[0].pre_exon_length,yslider) 
 			ctx.stroke()
 			ctx.fill()
-			#post-exon						
-			ctx.move_to((lst[0].pre_exon_length+lst[0].exon_length),slider)
-			ctx.line_to((lst[0].pre_exon_length+lst[0].exon_length+lst[0].exon_length),slider) 
-			ctx.stroke()
-			ctx.fill()
-
-																#Draw exon  
-
+			
 			#set rectangle coords for exon	
-			hgt = 5
+			hgt = self.exonspace
 			wth = lst[0].exon_length
 			x0 = lst[0].pre_exon_length
-			y0 = slider-(hgt/2)
-			#draw rectangle
-			ctx.set_source_rgb(110,116,128) #gray color
+			y0 = yslider-(hgt/2)
+			#draw exon rectangle
 			ctx.rectangle(x0,y0, wth, hgt)  # Rectangle(x0, y0, width, height)
 			ctx.fill()
+			
+			#draw post-exon						
+			ctx.move_to((lst[0].pre_exon_length+lst[0].exon_length),yslider)
+			ctx.line_to((lst[0].pre_exon_length+lst[0].exon_length+lst[0].post_exon_length),yslider) 
+			ctx.stroke()
+			ctx.fill()
+
+
+		### Draw Motifs for each gene
+			for motif,hitlist in lst[1].items():
+				ctx.set_source_rgb( (self.color_dict[motif][0]), (self.color_dict[motif][1]), (self.color_dict[motif][2]) ) # Set motif color
+				for hitpair in hitlist:
+					ctx.rectangle( (hitpair[0]+self.gapx), (yslider-(self.motiflen/2)), (hitpair[1]-hitpair[0]), self.motiflen)
+					ctx.fill()
+
+		# move slider to next gene
+			yslider += self.betweenspace	
+			
+	### Draw Legend box
+		legend_slider = self.gapy
+		ctx.move_to((WIDTH-150),legend_slider)
+		ctx.set_source_rgb(1,1,1) #white color
+		ctx.select_font_face("Courier", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+		ctx.set_font_size(20)
+		ctx.show_text("Legend")
 		
-			#Move slider up
-			slider += 10
+		legend_slider +=20
 		
-		#Check here - are all genes labeled and drawn? drawn?
+		ctx.set_source_rgb((135/255),(131/255),(131/255)) #Gray color
+		ctx.set_line_width(5) #set line thickness
+		ctx.move_to((WIDTH-150),legend_slider)
+		ctx.line_to(WIDTH-125,legend_slider) 
+		ctx.stroke()
+		ctx.fill()
 		
+		legend_slider +=5
+
+		ctx.move_to((WIDTH-120),legend_slider)
+		ctx.show_text("Intron")
+
+		legend_slider += 10
+		ctx.rectangle(WIDTH-150,legend_slider, 20, 20)  # Rectangle(x0, y0, width, height)
+		ctx.fill()
+		
+		legend_slider += 15
+		
+		ctx.move_to((WIDTH-120),legend_slider)
+		ctx.set_font_size(20)
+		ctx.show_text("Exon")
+
+		for motif,color in self.color_dict.items():
+			legend_slider += 15
+			ctx.set_source_rgb(color[0],color[1],color[2])
+			ctx.rectangle(WIDTH-150,legend_slider, 20, 20)  # Rectangle(x0, y0, width, height)
+			ctx.fill()
+		
+			legend_slider += 15
+		
+			ctx.move_to((WIDTH-120),legend_slider)
+			ctx.set_font_size(20)
+			ctx.show_text(motif)
+
+
+
+	
 		#Save image
 		return surface
 
